@@ -12,6 +12,9 @@ const CI=["Penjualan","Pelunasan piutang","Modal","Lain-lain"],CO=[TU,"Upah muat
 const MIN=1e6,MAX=1.2e6;
 let tx=[],DBX=null;try{tx=JSON.parse(localStorage.getItem("kas")||"[]")}catch(e){}
 const save=()=>{try{localStorage.setItem("kas",JSON.stringify(tx))}catch(e){}};
+const nf=v=>{const n=String(v==null?"":v).replace(/\D/g,"").replace(/^0+(?=\d)/,"");return n.replace(/\B(?=(\d{3})+(?!\d))/g,".")};
+const un=v=>+String(v==null?"":v).replace(/\D/g,"")||0;
+function fmtIn(e){const v=e.value,p=e.selectionStart==null?v.length:e.selectionStart,d=v.slice(0,p).replace(/\D/g,"").length;e.value=nf(v);const w=e.value;let i=0,c=0;while(i<w.length&&c<d){if(/\d/.test(w[i]))c++;i++}try{e.setSelectionRange(i,i)}catch(_){}}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const opt=a=>a.map(x=>`<option>${x}</option>`).join("");
 const sum=a=>a.reduce((s,x)=>s+x.amt,0);
@@ -60,12 +63,16 @@ function meal(){
  +P("Rincian Minggu Ini",[["Jumlah Catatan",wl7.length],["Tertinggi",sh(Math.max(0,...wl7.map(x=>x.amt)))],["Terakhir",wl7[0]?dm(wl7[0].date):"-"]],rows(wl7))}
 
 let pre=null;
+function saldoBar(){
+ const INN=tx.filter(x=>x.type=="in"),CSH=cashOut(),t=today(),M=t.slice(0,7),bal=sum(INN)-sum(CSH),L=ledger(),u=wk(inCat("Uang makan"),mon(t));
+ const bm=m=>sum(INN.filter(x=>x.met==m))-sum(CSH.filter(x=>x.met==m));
+ const c=(l,v,sub,cls)=>`<div class="${cls||""}">${l}<b class="${v<0?"neg":""}">${fmt(v)}</b><small>${sub}</small></div>`;
+ return `<div class="sb">`+c("Saldo Kas Saat Ini",bal,"semua masuk − kas keluar","big")+c("Dompet Uang Makan",L.w,"top up − pemakaian")+c("Masuk Bulan Ini",sum(inM(INN,M)),ml(M))+c("Keluar Bulan Ini",sum(inM(CSH,M)),"termasuk top up dan tarikan")+c("Saldo Tunai",bm("Tunai"),"sisa di tunai")+c("Saldo Bank",bm("Bank"),"sisa di bank")+c("Saldo E-wallet",bm("E-wallet"),"sisa di e-wallet")+c("Sisa Jatah Makan",MAX-u,"minggu ini, dari 1,2 jt")+`</div>`}
 function banner(){
  const t=today();if(new Date().getDay()!=1)return"";
  if(inCat(TU).some(x=>x.date>=t))return"";
- const w=ledger().w,a=Math.max(0,MAX-w);if(!a)return"";
- return `<div class="al"><span>Hari ini Senin: top up uang makan belum dicatat. Saldo dompet ${fmt(w)}.</span><button onclick="tu(${a})">Top up ${fmt(a)}</button></div>`}
-function tu(a){pre={cat:TU,amt:a};openS("Pengeluaran")}
+ return `<div class="al"><span>Hari ini Senin: top up uang makan belum dicatat. Saldo dompet ${fmt(ledger().w)}.</span><button onclick="tu()">Top up sekarang</button></div>`}
+function tu(){pre={cat:TU};openS("Pengeluaran")}
 
 function ops(){
  const t=today(),m=mon(t),M=t.slice(0,7),OP=inCat("Operasional"),UM=inCat("Uang makan"),l6=L6(),a=sum(inM(OP,M)),b=sum(inM(OP,l6[4][0]));
@@ -79,7 +86,7 @@ let tab="Ringkasan";const V={"Ringkasan":summary,"Uang Makan":meal,"Operasional"
 function go(k){if(k=="Laporan")openS("Laporan");else{tab=k;render()}}
 function render(){
  $("#sd").innerHTML=TB.map(k=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${k}</button>`).join("");
- $("#ct").innerHTML=banner()+V[tab]();
+ $("#ct").innerHTML=saldoBar()+banner()+V[tab]();
  $("#ts").textContent=new Date().toLocaleString("id-ID",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}
 
 /* Catat & laporan */
@@ -92,7 +99,7 @@ function drawS(){
  $("#sb").innerHTML=b;if(sk=="Uang Makan")mealCalc();if(sk=="Pengeluaran")catChg()}
 function form(){if(sk=="Uang Makan")return mealForm();
  const out=sk!="Pemasukan",p=pre||{};pre=null;
- return `<div class="f"><label>Tanggal<input type="date" id="d" value="${today()}"></label><label>Jumlah (Rp)<input type="number" id="a" inputmode="numeric" placeholder="0" value="${p.amt||""}"></label><label>Kategori<select id="c" ${out?'onchange="catChg()"':""}>${optS(out?CO:CI,p.cat)}</select></label><label>Metode<select id="t">${opt(MET)}</select></label>${out?`<div class="full ub" id="ub"><label>Nama kontainer<input id="cn" autocapitalize="characters" placeholder="Contoh: MSKU1234567"></label><label>Ukuran kontainer<select id="cs">${opt(SZ)}</select></label></div><div class="inf" id="inf" style="display:none"></div>`:""}<label class="full">Keterangan<input id="n" placeholder="Keterangan"></label><button class="btn" onclick="add()">Simpan</button></div>`}
+ return `<div class="f"><label>Tanggal<input type="date" id="d" value="${today()}"></label><label>Jumlah (Rp)<input type="text" id="a" inputmode="numeric" placeholder="0" oninput="fmtIn(this)" autocomplete="off" value="${nf(p.amt)}"></label><label>Kategori<select id="c" ${out?'onchange="catChg()"':""}>${optS(out?CO:CI,p.cat)}</select></label><label>Metode<select id="t">${opt(MET)}</select></label>${out?`<div class="full ub" id="ub"><label>Nama kontainer<input id="cn" autocapitalize="characters" placeholder="Contoh: MSKU1234567"></label><label>Ukuran kontainer<select id="cs">${opt(SZ)}</select></label></div><div class="inf" id="inf" style="display:none"></div>`:""}<label class="full">Keterangan<input id="n" placeholder="Keterangan"></label><button class="btn" onclick="add()">Simpan</button></div>`}
 function catChg(){
  const c=$("#c"),ub=$("#ub"),i=$("#inf");if(!c||!ub)return;const v=c.value;
  ub.style.display=v==UB?"grid":"none";
@@ -106,15 +113,15 @@ function mealForm(){
  if(!mw)mw=mon(today());
  const UM=inCat("Uang makan");
  return `<div class="f"><label>Minggu (pilih tanggal mana saja)<input type="date" id="mwd" value="${mw}" onchange="mw=mon(this.value||today());drawS()"></label><label>Metode (jika ditarik dari kas)<select id="t">${opt(MET)}</select></label>
-<div class="dg full">${DAYN.map((n,i)=>{const d=addD(mw,i),v=sumR(UM,d,d);return `<label><span>${n} <small>${dm(d)}</small></span><input type="number" inputmode="numeric" min="0" placeholder="0" class="md" data-d="${d}" data-v="${v}" value="${v||""}" oninput="mealCalc()"></label>`}).join("")}</div>
+<div class="dg full">${DAYN.map((n,i)=>{const d=addD(mw,i),v=sumR(UM,d,d);return `<label><span>${n} <small>${dm(d)}</small></span><input type="text" inputmode="numeric" placeholder="0" class="md" autocomplete="off" data-d="${d}" data-v="${v}" value="${nf(v)}" oninput="fmtIn(this);mealCalc()"></label>`}).join("")}</div>
 <div class="inf" id="inf"></div><button class="btn" onclick="saveMeal()">Simpan uang makan minggu ini</button></div>`}
 function mealCalc(){
- const u=[...document.querySelectorAll(".md")].reduce((s,e)=>s+(+e.value||0),0),s=st(u);
+ const u=[...document.querySelectorAll(".md")].reduce((s,e)=>s+un(e.value),0),s=st(u);
  $("#inf").innerHTML=`Minggu ${wl(mw)}: total <b>${fmt(u)}</b>, sisa dari 1,2 jt <b class="${MAX-u<0?"neg":""}">${fmt(MAX-u)}</b> (${s[0]})`}
 function saveMeal(){
  const m=$("#t").value;let ch=0;
  document.querySelectorAll(".md").forEach((e,i)=>{
-  const d=e.dataset.d,nv=+e.value||0,ov=+e.dataset.v||0;if(nv===ov)return;
+  const d=e.dataset.d,nv=un(e.value),ov=+e.dataset.v||0;if(nv===ov)return;
   tx.filter(x=>x.type=="out"&&x.cat=="Uang makan"&&x.date==d).forEach(x=>{});
   tx=tx.filter(x=>!(x.type=="out"&&x.cat=="Uang makan"&&x.date==d));
   if(nv>0){const o={id:Date.now()+i,type:"out",date:d,desc:"Uang makan "+DAYN[i],amt:nv,cat:"Uang makan",met:m};tx.push(o);}
@@ -122,7 +129,7 @@ function saveMeal(){
  if(!ch){alert("Belum ada perubahan.");return}
  save();drawS();render()}
 function add(){
- const a=+$("#a").value,n=$("#n").value.trim(),c=$("#c").value,inn=sk=="Pemasukan",ub=!inn&&c==UB,cn=ub?$("#cn").value.trim().toUpperCase():"";
+ const a=un($("#a").value),n=$("#n").value.trim(),c=$("#c").value,inn=sk=="Pemasukan",ub=!inn&&c==UB,cn=ub?$("#cn").value.trim().toUpperCase():"";
  if(!(a>0)){alert("Isi jumlah lebih dari 0.");return}
  if(ub&&!cn){alert("Isi nama kontainer untuk upah bongkar.");return}
  if(!n&&(inn||!(c==TU||ub))){alert("Isi keterangan.");return}
